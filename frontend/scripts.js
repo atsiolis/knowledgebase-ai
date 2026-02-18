@@ -62,7 +62,7 @@ async function handleAsk() {
         // Step 4: Add bot's answer to chat
         chatWindow.innerHTML += `
             <div class="message bot">
-                ${escapeHtml(data.answer)}
+                ${marked.parse(data.answer)}              
                 ${sourceHtml}
             </div>
         `;

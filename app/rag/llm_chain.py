@@ -58,6 +58,7 @@ def generate_answer(question: str, chunks: list):
     Question: {question}
 
     Answer concisely, and include citations if possible.
+    Use markdown for formatting.
     """
 
     # Step 3: Call OpenAI API to generate the answer

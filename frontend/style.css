@@ -1,3 +1,22 @@
+/**
+ * Styles for KnowledgeBase AI
+ * 
+ * Design System:
+ * - Colors: Warm, knowledge-focused palette with blues and ambers
+ * - Typography: Crimson Pro (headings) + DM Sans (body)
+ * - Layout: Flexbox sidebar + main content area
+ * - Animations: Smooth transitions and fade-in effects
+ * 
+ * Structure:
+ * 1. CSS Variables (colors, shadows)
+ * 2. Global Styles (*, body)
+ * 3. Sidebar (logo, upload, documents)
+ * 4. Chat Area (header, messages, input)
+ * 5. Progress Bar (upload feedback)
+ * 6. Utilities (hidden, scrollbar)
+ * 7. Responsive (mobile)
+ */
+
 :root {
     /* Warm, knowledge-focused palette */
     --primary: #2c5282;
@@ -219,6 +238,26 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.delete-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    opacity: 0;
+}
+
+.document-item:hover .delete-btn {
+    opacity: 1;
+}
+
+.delete-btn:hover {
+    background: #fee2e2;
+    color: #dc2626;
 }
 
 .empty-state {

@@ -1,6 +1,6 @@
 # 🧠 KnowledgeBase AI
 
-An AI-powered document Q&A system with a real-time RAG (Retrieval-Augmented Generation) pipeline. Upload PDFs or text files and get instant, accurate answers grounded in your documents — complete with source citations.
+An AI-powered document Q&A system with a real-time RAG (Retrieval-Augmented Generation) pipeline. Upload PDFs or text files and get instant, accurate answers grounded in your documents — complete with source citations streamed token-by-token.
 
 ---
 
@@ -8,9 +8,10 @@ An AI-powered document Q&A system with a real-time RAG (Retrieval-Augmented Gene
 
 - **Document Ingestion** — Upload PDFs or plain text files and have them automatically chunked, embedded, and stored
 - **Semantic Search** — Uses OpenAI embeddings and Supabase's pgvector store to find the most relevant passages for any query
-- **Cited Answers** — Every answer references the exact source chunks it was derived from, so you can verify and trace back to the original content
-- **Real-time RAG Pipeline** — From upload to queryable knowledge in seconds
-- **Clean Frontend** — A simple, intuitive HTML/CSS/JS interface for uploading documents and asking questions
+- **Streaming Answers** — GPT-4o responses are streamed token-by-token via Server-Sent Events, rendering live in the UI
+- **Source Citations** — Every answer references the source documents it was derived from
+- **Real-time Upload Progress** — Progress bar tracks every stage from extraction to database insert
+- **Clean Frontend** — Intuitive HTML/CSS/JS interface with live markdown rendering
 
 ---
 
@@ -21,7 +22,7 @@ An AI-powered document Q&A system with a real-time RAG (Retrieval-Augmented Gene
 | Backend | FastAPI (Python) |
 | Embeddings | OpenAI `text-embedding-3-small` |
 | Vector Store | Supabase (pgvector) |
-| LLM | OpenAI GPT |
+| LLM | OpenAI GPT-4o (streaming) |
 | Frontend | HTML, CSS, JavaScript |
 
 ---
@@ -34,14 +35,14 @@ knowledgebase-ai/
 │   ├── db/
 │   │   └── supabase_client.py    # Supabase connection & client setup
 │   ├── rag/
-│   │   ├── ingestion.py          # Document parsing & chunking
-│   │   ├── llm_chain.py          # LLM prompt chain & answer generation
-│   │   └── retriever.py          # Vector similarity search
-│   └── main.py                   # FastAPI entry point & route definitions
+│   │   ├── ingestion.py          # Document parsing, chunking & batch embedding
+│   │   ├── llm_chain.py          # Streaming answer generation via AsyncOpenAI
+│   │   └── retriever.py          # Async vector similarity search
+│   └── main.py                   # FastAPI entry point, routes & SSE streaming
 ├── frontend/
 │   ├── index.html                # Main UI
-│   ├── scripts.js                # Frontend logic
-│   └── style.css                 # Styling
+│   ├── scripts.js                # SSE stream consumer & UI logic
+│   └── style.css                 # Styling + streaming cursor animation
 ├── .env.example                  # Environment variable template
 ├── requirements.txt              # Python dependencies
 └── README.md
@@ -72,8 +73,6 @@ pip install -r requirements.txt
 
 ### 3. Configure environment variables
 
-Copy the example env file and fill in your credentials:
-
 ```bash
 cp .env.example .env
 ```
@@ -86,7 +85,7 @@ SUPABASE_KEY=your_supabase_service_role_key
 
 ### 4. Set up Supabase
 
-In your Supabase project, run the following SQL to create the required tables, enable vector support, and register the similarity search function:
+Run the following SQL in your Supabase SQL editor:
 
 ```sql
 -- Documents table
@@ -146,11 +145,11 @@ $$;
 uvicorn app.main:app --reload
 ```
 
-The API will be available at `http://localhost:8000`. You can explore the auto-generated docs at `http://localhost:8000/docs`.
+The API will be available at `http://localhost:8000`. Auto-generated docs at `http://localhost:8000/docs`.
 
 ### 6. Open the frontend
 
-Open `frontend/index.html` directly in your browser, or serve it with any static file server:
+Open `frontend/index.html` in your browser, or serve it with:
 
 ```bash
 npx serve frontend
@@ -160,8 +159,40 @@ npx serve frontend
 
 ## 🛠️ How It Works
 
-1. **Upload** — A document is uploaded via the API. Its name is recorded in the `documents` table and the content is passed to `ingestion.py` to be split into overlapping text chunks.
-2. **Embed** — Each chunk is sent to OpenAI's embedding model via `llm_chain.py` to produce a 1536-dimension vector.
-3. **Store** — Chunks, their embeddings, and metadata are persisted to the `chunks` table in Supabase through `supabase_client.py`. Deleting a document cascades to remove all its associated chunks automatically.
-4. **Query** — A user's question is embedded using the same model, then `retriever.py` calls the `match_chunks` Supabase function to perform cosine similarity search, returning the most relevant chunks above a configurable threshold.
-5. **Generate** — The retrieved chunks are injected as context into an OpenAI chat prompt via `llm_chain.py`. The model returns a grounded answer with source citations.
+1. **Upload** — A document is uploaded via the API. Its name is recorded in the `documents` table and the content is passed to `ingestion.py` to be split into overlapping text chunks using `RecursiveCharacterTextSplitter`.
+
+2. **Embed** — Chunks are sent to OpenAI's `text-embedding-3-small` model in batches of 100 via `ingestion.py`, producing 1536-dimension vectors. This runs in a background thread so uploads don't time out.
+
+3. **Store** — Chunks, embeddings, and metadata are persisted to the `chunks` table via `supabase_client.py`. Deleting a document cascades to remove all its chunks automatically.
+
+4. **Retrieve** — When a question is asked, `retriever.py` embeds it using `AsyncOpenAI` (non-blocking), then calls the `match_chunks` Supabase function via `asyncio.to_thread` to run cosine similarity search without blocking the event loop.
+
+5. **Stream** — The top matching chunks are passed to `llm_chain.py`, which calls GPT-4o with `stream=True` via `AsyncOpenAI`. Tokens are yielded as an async generator and sent to the frontend as Server-Sent Events. The frontend's `ReadableStream` reader renders each token live into the chat bubble as it arrives.
+
+---
+
+## 🔌 API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `GET` | `/documents` | List all ingested documents |
+| `DELETE` | `/documents/{id}` | Remove a document and its chunks |
+| `POST` | `/upload` | Upload a PDF or TXT file |
+| `GET` | `/upload/status/{upload_id}` | Poll upload progress |
+| `GET` | `/ask?question=...` | Stream an answer via Server-Sent Events |
+
+### SSE Event Format (`/ask`)
+
+The `/ask` endpoint returns a stream of newline-delimited JSON events:
+
+```
+data: {"type": "sources", "content": ["report.pdf", "notes.txt"]}
+
+data: {"type": "token", "content": "The"}
+
+data: {"type": "token", "content": " answer"}
+
+data: {"type": "done"}
+```
+

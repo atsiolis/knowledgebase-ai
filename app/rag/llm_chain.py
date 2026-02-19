@@ -4,71 +4,64 @@ LLM Chain for Answer Generation
 This module handles the final step of RAG:
 - Takes retrieved document chunks
 - Constructs a prompt with context
-- Calls OpenAI's GPT-4 to generate an answer
+- Streams GPT-4o tokens back as an async generator
 
-The LLM is instructed to:
-- Only answer based on provided context
-- Admit when it doesn't know
-- Include citations when possible
+Uses AsyncOpenAI so the FastAPI event loop is never blocked.
 """
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 import os
+from typing import AsyncGenerator
 
-# Initialize OpenAI client with API key from environment
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Async OpenAI client — non-blocking, compatible with FastAPI's event loop
+async_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def generate_answer(question: str, chunks: list):
+
+async def generate_answer_stream(question: str, chunks: list) -> AsyncGenerator[str, None]:
     """
-    Generate an answer to a question using retrieved context chunks.
-    
-    This implements the "Generation" step of RAG (Retrieval-Augmented Generation).
-    The LLM is given relevant document chunks as context and asked to answer
-    the question based only on that context.
-    
+    Stream an answer token-by-token using GPT-4o.
+
+    Implements the "Generation" step of RAG. The LLM is given relevant
+    document chunks as context and streams its response back, allowing
+    the frontend to render tokens as they arrive rather than waiting
+    for the full response.
+
     Args:
         question (str): The user's question
-        chunks (list): List of relevant document chunks from vector search
-                      Each chunk is a dict with 'content' and 'metadata'
-    
-    Returns:
-        str: The generated answer from GPT-4
-        
+        chunks (list): Relevant document chunks from vector search.
+                       Each chunk is a dict with 'content' and 'metadata'.
+
+    Yields:
+        str: Individual text tokens as they are produced by the model.
+
     Example:
-        chunks = [
-            {"content": "Paris is the capital of France.", "metadata": {...}},
-            {"content": "The Eiffel Tower is in Paris.", "metadata": {...}}
-        ]
-        answer = generate_answer("What is the capital of France?", chunks)
-        # Returns: "The capital of France is Paris."
-    """
-    
-    # Step 1: Combine all chunk contents into a single context string
-    # Each chunk is separated by two newlines for readability
-    context = "\n\n".join([c['content'] for c in chunks])
-    
-    # Step 2: Construct the prompt with instructions and context
-    prompt = f"""
-    You are an assistant. Use the following context to answer the question.
-    If the answer is not in the context, say you don't know.
-    
-    Context:
-    {context}
-
-    Question: {question}
-
-    Answer concisely, and include citations if possible.
-    Use markdown for formatting.
+        async for token in generate_answer_stream("What is RAG?", chunks):
+            print(token, end="", flush=True)
     """
 
-    # Step 3: Call OpenAI API to generate the answer
-    # Using gpt-4o model for high-quality responses
-    # Temperature=0 makes responses more deterministic/consistent
-    response = client.chat.completions.create(
-        model="gpt-4o",  # GPT-4 Optimized model
+    # Combine all chunk contents into a single context string
+    context = "\n\n".join([c["content"] for c in chunks])
+
+    prompt = f"""You are an assistant. Use the following context to answer the question.
+If the answer is not in the context, say you don't know.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer concisely, and include citations if possible.
+Use markdown for formatting."""
+
+    # stream=True tells OpenAI to return an async iterator of chunks
+    stream = await async_client.chat.completions.create(
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0  # 0 = deterministic, 2 = creative
+        temperature=0,
+        stream=True,
     )
-    
-    # Step 4: Extract and return the text content from the response
-    return response.choices[0].message.content
+
+    async for chunk in stream:
+        token = chunk.choices[0].delta.content
+        if token is not None:
+            yield token

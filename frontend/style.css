@@ -506,6 +506,26 @@ body {
     height: 20px;
 }
 
+/* ============ STREAMING CURSOR ============ */
+/*
+ * While a bot message is being streamed, we show a blinking cursor at the
+ * end of the text so the user knows more tokens are on the way.
+ * The .streaming class is removed once the 'done' SSE event is received.
+ */
+.message.bot.streaming::after {
+    content: "▍";
+    display: inline-block;
+    color: var(--primary);
+    animation: blink 0.7s step-end infinite;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+}
+
 /* Utilities */
 .hidden {
     display: none !important;

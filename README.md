@@ -32,21 +32,55 @@ An AI-powered document Q&A system with a real-time RAG (Retrieval-Augmented Gene
 ```
 knowledgebase-ai/
 ├── app/
+│   ├── __init__.py           # Makes 'app' a Python package
 │   ├── db/
+│   │   ├── __init__.py
 │   │   └── supabase_client.py    # Supabase connection & client setup
 │   ├── rag/
+│   │   ├── __init__.py
 │   │   ├── ingestion.py          # Document parsing, chunking & batch embedding
 │   │   ├── llm_chain.py          # Streaming answer generation via AsyncOpenAI
 │   │   └── retriever.py          # Async vector similarity search
 │   └── main.py                   # FastAPI entry point, routes & SSE streaming
+├── tests/                        # 🧪 Comprehensive test suite
+│   ├── __init__.py           
+│   ├── conftest.py               # Shared fixtures and global mocks
+│   ├── test_ingestion.py         # Tests for parsing and embedding logic
+│   ├── test_llm_chain.py         # Tests for streaming LLM responses
+│   ├── test_main.py              # Integration tests for FastAPI endpoints
+│   └── test_retriever.py         # Tests for vector search retrieval
 ├── frontend/
 │   ├── index.html                # Main UI
 │   ├── scripts.js                # SSE stream consumer & UI logic
 │   └── style.css                 # Styling + streaming cursor animation
 ├── .env.example                  # Environment variable template
+├── docker-compose.yml            # 🐳 Docker multi-container orchestration
+├── Dockerfile.backend            # 🐍 Backend environment & FastAPI setup
+├── Dockerfile.frontend           # 🌐 Nginx configuration for static UI
 ├── requirements.txt              # Python dependencies
 └── README.md
 ```
+---
+
+## 🧪 Testing
+
+The project includes a robust test suite powered by `pytest`. All external dependencies (OpenAI and Supabase) are fully mocked, allowing tests to run without network access or API credits.
+
+### Running Tests
+1. Install test dependencies:
+   ```bash
+   pip install pytest pytest-asyncio
+   ```
+2. Run the full suite:
+   ```bash
+   pytest -v
+   ```
+
+### Test Coverage
+- **Ingestion**: Validates PDF/TXT extraction, text chunking boundaries, and batch embedding generation.
+- **Retrieval**: Ensures vector search calls the correct Supabase RPC functions with the expected dimensions.
+- **LLM Chain**: Verifies that GPT-4o is called with streaming enabled and that tokens are yielded in the correct order.
+- **API Endpoints**: Full integration tests for `/upload`, `/ask` (SSE), and `/documents` management.
 
 ---
 
@@ -154,6 +188,38 @@ Open `frontend/index.html` in your browser, or serve it with:
 ```bash
 npx serve frontend
 ```
+
+---
+
+## 🐳 Docker Deployment
+
+The project is containerized using a multi-service architecture to ensure the backend and frontend environments are isolated and easily reproducible.
+
+### Architecture
+* **Backend Service**: A Python 3.10-slim image running FastAPI via Uvicorn. It handles document parsing (PDF/TXT), embedding generation via OpenAI, and database interactions with Supabase.
+* **Frontend Service**: An Nginx-alpine image that serves the static HTML, CSS, and JavaScript files.
+* **Orchestration**: Docker Compose manages the networking between these services, ensuring the frontend can communicate with the backend API.
+
+### Getting Started with Docker
+
+1.  **Environment Setup**:
+    Ensure your `.env` file is in the root directory with your `OPENAI_API_KEY`, `SUPABASE_URL`, and `SUPABASE_KEY`.
+
+2.  **Build and Run**:
+    Execute the following command from the root directory:
+    ```bash
+    docker-compose up --build
+    ```
+
+3.  **Access the Application**:
+    * **Web Interface**: `http://localhost` (Port 80)
+    * **API Documentation**: `http://localhost:8000/docs` (FastAPI Swagger UI)
+
+### Docker Configuration Files
+* `Dockerfile.backend`: Handles the Python environment, system dependencies for PDF processing, and requirement installation.
+* `Dockerfile.frontend`: Sets up the Nginx server to deliver the UI.
+* `docker-compose.yml`: Orchestrates the build context, port mapping, and environment variable injection for both services.
+
 
 ---
 

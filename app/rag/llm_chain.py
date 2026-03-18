@@ -9,9 +9,10 @@ This module handles the final step of RAG:
 Uses AsyncOpenAI so the FastAPI event loop is never blocked.
 """
 
-from openai import AsyncOpenAI
 import os
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
+from openai import AsyncOpenAI
 
 # Async OpenAI client — non-blocking, compatible with FastAPI's event loop
 async_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))

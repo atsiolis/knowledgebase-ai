@@ -13,10 +13,12 @@ Key optimizations:
 - Retry logic for network failures
 """
 
+import os
+
 import pdfplumber
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
-import os
+
 from app.db.supabase_client import supabase
 
 # Initialize OpenAI client for embedding generation
@@ -52,10 +54,9 @@ def extract_text(file_path: str) -> str:
                 if extracted:
                     text += extracted + "\n"
         return text
-    else:
-        # Handle TXT files
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read()
+    # Handle TXT files
+    with open(file_path, encoding="utf-8") as f:
+        return f.read()
 
 
 # ============================================================================
@@ -171,22 +172,22 @@ def save_chunks(document_name: str, chunks: list):
         chunks: id (bigint), document_id (uuid FK), content (text),
                 embedding (vector 1536), metadata (jsonb)
     """
-    
+
     # Step 1: Create document entry and get its ID
     doc_resp = supabase.table("documents").insert({"name": document_name}).execute()
     document_id = doc_resp.data[0]["id"]
-    
+
     # Batch sizes optimized to avoid timeouts
     EMBEDDING_BATCH_SIZE = 100  # OpenAI batch size
     SUPABASE_BATCH_SIZE = 50    # Supabase insert batch size (smaller due to vector size)
-    
+
     all_rows = []
-    
+
     # Step 2: Generate embeddings in batches
     for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
         batch = chunks[i:i + EMBEDDING_BATCH_SIZE]
         embeddings = generate_embeddings_batch(batch)
-        
+
         # Prepare rows for database insertion
         for chunk, embedding in zip(batch, embeddings):
             all_rows.append({
@@ -195,18 +196,18 @@ def save_chunks(document_name: str, chunks: list):
                 "embedding": embedding,
                 "metadata": {"source": document_name}  # Track source document
             })
-    
+
     # Step 3: Insert to database in batches with retry logic
     for i in range(0, len(all_rows), SUPABASE_BATCH_SIZE):
         batch_rows = all_rows[i:i + SUPABASE_BATCH_SIZE]
-        
+
         # Retry up to 3 times for transient failures
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 supabase.table("chunks").insert(batch_rows).execute()
                 break  # Success - move to next batch
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     raise  # Give up after max retries
                 import time

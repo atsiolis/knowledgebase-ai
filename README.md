@@ -31,9 +31,6 @@ An AI-powered document Q&A system with a real-time RAG (Retrieval-Augmented Gene
 
 ```
 knowledgebase-ai/
-├── .github/
-│   └── workflows/
-│       └── ci.yml            # 🚀 CI pipeline
 ├── app/
 │   ├── __init__.py           # Makes 'app' a Python package
 │   ├── db/

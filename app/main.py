@@ -107,7 +107,7 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
     Returns immediately with an upload_id so the frontend can start
     polling /upload/status/{upload_id} for progress.
     """
-    file_path = f"../temp_{file.filename}"
+    file_path = f"./tmp/temp_{file.filename}"
     upload_id = str(uuid.uuid4())
 
     upload_progress[upload_id] = {

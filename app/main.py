@@ -10,17 +10,18 @@ This module handles:
 Tech Stack: FastAPI, Supabase (pgvector), OpenAI
 """
 
-import os
 import json
+import os
 import uuid
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
+
+from fastapi import BackgroundTasks, FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app.db.supabase_client import supabase
-from app.rag.ingestion import extract_text, chunk_text, generate_embeddings_batch
-from app.rag.retriever import retrieve_similar_chunks
+from app.rag.ingestion import chunk_text, extract_text, generate_embeddings_batch
 from app.rag.llm_chain import generate_answer_stream
+from app.rag.retriever import retrieve_similar_chunks
 
 # Initialize FastAPI application
 app = FastAPI()
@@ -247,7 +248,7 @@ def save_chunks_with_progress(document_name: str, chunks: list, upload_id: str):
                     f"Saved {chunks_saved}/{len(all_rows)} chunks to database..."
                 )
                 break
-            except Exception as e:
+            except Exception:
                 if attempt == 2:
                     raise
                 import time

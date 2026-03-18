@@ -12,7 +12,9 @@ Uses cosine similarity search with the pgvector extension in PostgreSQL.
 
 import asyncio
 import os
+
 from openai import AsyncOpenAI
+
 from app.db.supabase_client import supabase
 
 # Async OpenAI client — used here only for query embeddings

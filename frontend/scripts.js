@@ -12,7 +12,29 @@
 // CONFIGURATION
 // ============================================================================
 
-const API_URL = "http://localhost:8000";
+/**
+ * Resolve the backend API URL at runtime so this file works across
+ * environments without being rebuilt:
+ *
+ *   1. <meta name="api-url" content="https://api.myapp.com"> in index.html
+ *      → used when set explicitly (production / Docker deployments)
+ *
+ *   2. Falls back to same-origin (empty string) which works when the
+ *      frontend is reverse-proxied behind the same host as the backend.
+ *
+ *   3. Falls back to localhost:8000 for plain local development where
+ *      the frontend is opened directly as a file or via `npx serve`.
+ *
+ * To override in Docker/production, add this to index.html <head>:
+ *   <meta name="api-url" content="http://your-backend-host:8000">
+ */
+const _metaApiUrl = document.querySelector('meta[name="api-url"]')?.content;
+const API_URL = _metaApiUrl || (
+    // If served by the same host (e.g. via a reverse proxy), use same origin
+    window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
+        ? ""
+        : "http://localhost:8000"
+);
 
 
 // ============================================================================

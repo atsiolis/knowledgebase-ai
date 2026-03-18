@@ -10,6 +10,7 @@ This module handles:
 Tech Stack: FastAPI, Supabase (pgvector), OpenAI
 """
 
+import asyncio
 import json
 import os
 import uuid
@@ -30,14 +31,20 @@ app = FastAPI()
 # Key: upload_id (UUID), Value: progress data dict
 upload_progress = {}
 
-# Configure CORS — in production, replace "*" with your frontend origin
+# Configure CORS — in production, replace with your frontend origin.
+# Note: allow_credentials=True is incompatible with allow_origins=["*"] per
+# the CORS spec. Either use explicit origins with credentials, or use "*"
+# without credentials.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# How long (in seconds) to retain completed/failed upload progress entries
+UPLOAD_PROGRESS_TTL = 300  # 5 minutes
 
 
 # ============================================================================
@@ -60,7 +67,6 @@ async def get_documents():
     Supabase call is async-safe here because FastAPI runs sync route handlers
     in a thread pool automatically. Using async def for consistency.
     """
-    import asyncio
     response = await asyncio.to_thread(
         lambda: supabase.table("documents").select("*").execute()
     )
@@ -72,7 +78,6 @@ async def delete_document(document_id: str):
     """
     Delete a document and all its associated chunks (cascade delete via FK).
     """
-    import asyncio
     try:
         response = await asyncio.to_thread(
             lambda: supabase.table("documents").delete().eq("id", document_id).execute()
@@ -113,7 +118,6 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
 
     upload_id = str(uuid.uuid4())
     file_path = os.path.join(upload_dir, file.filename)
-    upload_id = str(uuid.uuid4())
 
     upload_progress[upload_id] = {
         "status": "uploading",
@@ -147,12 +151,24 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
     except Exception as e:
         upload_progress[upload_id]["status"] = "error"
         upload_progress[upload_id]["message"] = str(e)
+        # Schedule cleanup for failed uploads
+        background_tasks.add_task(_schedule_progress_cleanup, upload_id)
         return {"status": "error", "detail": str(e)}
 
 
 # ============================================================================
 # BACKGROUND PROCESSING (sync — runs in FastAPI's thread pool)
 # ============================================================================
+
+def _schedule_progress_cleanup(upload_id: str):
+    """
+    Remove a completed or failed upload_progress entry after TTL seconds.
+    Runs in a background thread so it doesn't block the event loop.
+    """
+    import time
+    time.sleep(UPLOAD_PROGRESS_TTL)
+    upload_progress.pop(upload_id, None)
+
 
 def process_file_background(filename: str, file_path: str, upload_id: str):
     """
@@ -197,6 +213,8 @@ def process_file_background(filename: str, file_path: str, upload_id: str):
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
+        # Clean up progress entry after TTL regardless of outcome
+        _schedule_progress_cleanup(upload_id)
 
 
 def save_chunks_with_progress(document_name: str, chunks: list, upload_id: str):
